@@ -1,10 +1,15 @@
-print("🔥 NEW API VERSION RUNNING")
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from pathlib import Path
 from disease_reference import DISEASE_DATABASE
 from recommendation_engine import smart_recommendation
 import random
+
+print("🔥 NEW API VERSION RUNNING")
+
+BASE_DIR = Path(__file__).resolve().parent
+INDEX_FILE = BASE_DIR / "index.html"
 
 app = FastAPI(title="Plant AI Doctor – Publish Version")
 
@@ -16,9 +21,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.head("/")
+def head_root():
+    return Response(status_code=200)
+
 @app.get("/")
 def root():
-    return FileResponse("index.html")
+    if INDEX_FILE.exists():
+        return FileResponse(INDEX_FILE)
+    return JSONResponse(
+        {"error": "index.html not found", "path": str(INDEX_FILE)},
+        status_code=500
+    )
 
 @app.get("/health")
 def health():
@@ -48,7 +62,6 @@ async def predict(file: UploadFile = File(...)):
         result = random.choice(DISEASE_DATABASE)
 
     confidence = random.randint(88, 95)
-
     severity_score = random.randint(35, 90)
 
     if severity_score < 50:
