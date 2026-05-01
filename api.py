@@ -2,16 +2,18 @@ from fastapi import FastAPI, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
-from disease_reference import DISEASE_DATABASE
-from recommendation_engine import smart_recommendation
 import hashlib
+import os
 
-print("🔥 NEW DETERMINISTIC API VERSION RUNNING")
+from atlas_similarity import diagnose_by_image_similarity
+from recommendation_engine import smart_recommendation
+
+print("🔥 ATLAS IMAGE SIMILARITY API RUNNING")
 
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "index.html"
 
-app = FastAPI(title="Plant AI Doctor – Deterministic Publish Version")
+app = FastAPI(title="Plant AI Doctor - Atlas Image Similarity")
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,53 +31,41 @@ def head_root():
 def root():
     if INDEX_FILE.exists():
         return FileResponse(INDEX_FILE)
-    return JSONResponse(
-        {"error": "index.html not found", "path": str(INDEX_FILE)},
-        status_code=500
-    )
+    return JSONResponse({"error": "index.html not found"}, status_code=500)
 
 @app.get("/health")
 def health():
     return {
         "status": "running",
         "system": "Plant AI Doctor",
-        "mode": "AI Decision Engine - Deterministic Demo"
+        "mode": "Atlas Image Similarity"
     }
-
-@app.get("/diseases")
-def list_diseases():
-    return DISEASE_DATABASE
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
-
     image_bytes = await file.read()
 
-    # بصمة ثابتة للصورة
+    temp_path = BASE_DIR / f"temp_{file.filename}"
+
+    with open(temp_path, "wb") as f:
+        f.write(image_bytes)
+
+    try:
+        result, distance = diagnose_by_image_similarity(str(temp_path))
+    finally:
+        if temp_path.exists():
+            os.remove(temp_path)
+
+    if result is None:
+        return JSONResponse(
+            {"error": "لم يتم العثور على تشابه مناسب داخل الأطلس"},
+            status_code=400
+        )
+
+    confidence = max(50, min(95, 100 - distance * 3))
+
     image_hash = hashlib.sha256(image_bytes).hexdigest()
-    hash_number = int(image_hash[:12], 16)
-
-    filename = file.filename.lower()
-
-    # تشخيص ثابت حسب اسم الملف إن وجد
-    if "leaf" in filename or "ورقة" in filename:
-        result = DISEASE_DATABASE[0]
-    elif "spot" in filename or "بقع" in filename:
-        result = DISEASE_DATABASE[4]
-    elif "mold" in filename or "عفن" in filename:
-        result = DISEASE_DATABASE[2]
-    elif "wilt" in filename or "ذبول" in filename:
-        result = DISEASE_DATABASE[3]
-    else:
-        # تشخيص ثابت حسب بصمة الصورة
-        index = hash_number % len(DISEASE_DATABASE)
-        result = DISEASE_DATABASE[index]
-
-    # ثقة ثابتة حسب الصورة
-    confidence = 88 + (hash_number % 8)  # من 88 إلى 95
-
-    # شدة إصابة ثابتة حسب الصورة
-    severity_score = 35 + (hash_number % 56)  # من 35 إلى 90
+    severity_score = 35 + (int(image_hash[:8], 16) % 56)
 
     if severity_score < 50:
         severity_level_ar = "منخفضة"
@@ -87,18 +77,32 @@ async def predict(file: UploadFile = File(...)):
         severity_level_ar = "عالية"
         severity_level_en = "High"
 
-    control_plan = smart_recommendation(result)
+    diagnosis = {
+        "crop_ar": result.get("crop_ar", "غير محدد"),
+        "crop_en": result.get("crop_en", "Unknown"),
+        "disease_ar": result.get("disease_ar", "غير محدد"),
+        "disease_en": result.get("disease_en", "Unknown"),
+        "pathogen": result.get("pathogen", "From Atlas"),
+        "pathogen_type_ar": result.get("pathogen_type_ar", "حسب الأطلس"),
+        "pathogen_type_en": result.get("pathogen_type_en", "From Atlas"),
+        "source": f"Atlas of Plant Diseases - page {result.get('page', 'Unknown')}",
+        "symptoms": "تم اختيار أقرب صورة مشابهة من أطلس أمراض النبات."
+    }
+
+    control_plan = smart_recommendation(diagnosis)
 
     return {
-        "mode": "deterministic_ai_demo",
+        "mode": "atlas_similarity_ai",
         "confidence": confidence,
         "severity": {
             "score": severity_score,
             "level_ar": severity_level_ar,
             "level_en": severity_level_en
         },
-        "diagnosis": result,
+        "diagnosis": diagnosis,
         "control_plan": control_plan,
         "filename": file.filename,
-        "image_hash": image_hash[:16]
+        "image_hash": image_hash[:16],
+        "similarity_distance": distance,
+        "atlas_image": result.get("image", "")
     }
