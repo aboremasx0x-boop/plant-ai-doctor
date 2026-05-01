@@ -4,14 +4,14 @@ from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
 from disease_reference import DISEASE_DATABASE
 from recommendation_engine import smart_recommendation
-import random
+import hashlib
 
-print("🔥 NEW API VERSION RUNNING")
+print("🔥 NEW DETERMINISTIC API VERSION RUNNING")
 
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "index.html"
 
-app = FastAPI(title="Plant AI Doctor – Publish Version")
+app = FastAPI(title="Plant AI Doctor – Deterministic Publish Version")
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,7 +39,7 @@ def health():
     return {
         "status": "running",
         "system": "Plant AI Doctor",
-        "mode": "AI Decision Engine"
+        "mode": "AI Decision Engine - Deterministic Demo"
     }
 
 @app.get("/diseases")
@@ -48,8 +48,16 @@ def list_diseases():
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
+
+    image_bytes = await file.read()
+
+    # بصمة ثابتة للصورة
+    image_hash = hashlib.sha256(image_bytes).hexdigest()
+    hash_number = int(image_hash[:12], 16)
+
     filename = file.filename.lower()
 
+    # تشخيص ثابت حسب اسم الملف إن وجد
     if "leaf" in filename or "ورقة" in filename:
         result = DISEASE_DATABASE[0]
     elif "spot" in filename or "بقع" in filename:
@@ -59,10 +67,15 @@ async def predict(file: UploadFile = File(...)):
     elif "wilt" in filename or "ذبول" in filename:
         result = DISEASE_DATABASE[3]
     else:
-        result = random.choice(DISEASE_DATABASE)
+        # تشخيص ثابت حسب بصمة الصورة
+        index = hash_number % len(DISEASE_DATABASE)
+        result = DISEASE_DATABASE[index]
 
-    confidence = random.randint(88, 95)
-    severity_score = random.randint(35, 90)
+    # ثقة ثابتة حسب الصورة
+    confidence = 88 + (hash_number % 8)  # من 88 إلى 95
+
+    # شدة إصابة ثابتة حسب الصورة
+    severity_score = 35 + (hash_number % 56)  # من 35 إلى 90
 
     if severity_score < 50:
         severity_level_ar = "منخفضة"
@@ -77,7 +90,7 @@ async def predict(file: UploadFile = File(...)):
     control_plan = smart_recommendation(result)
 
     return {
-        "mode": "smart_ai_demo",
+        "mode": "deterministic_ai_demo",
         "confidence": confidence,
         "severity": {
             "score": severity_score,
@@ -86,5 +99,6 @@ async def predict(file: UploadFile = File(...)):
         },
         "diagnosis": result,
         "control_plan": control_plan,
-        "filename": file.filename
+        "filename": file.filename,
+        "image_hash": image_hash[:16]
     }
