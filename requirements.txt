@@ -1,7 +1,0 @@
-fastapi
-uvicorn
-python-multipart
-pillow
-imagehash
-PyWavelets
-numpy
