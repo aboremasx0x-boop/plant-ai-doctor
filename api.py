@@ -9,7 +9,7 @@ from atlas_similarity import diagnose_by_image_similarity
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "index.html"
 
-app = FastAPI(title="Plant AI Doctor - Stable Version")
+app = FastAPI(title="Plant AI Doctor - Stable Atlas Version")
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,15 +31,13 @@ def root():
 def health():
     return {
         "status": "running",
+        "version": "stable_bytes_v2",
         "mode": "Stable Atlas Similarity"
     }
 
 def safe_control_plan(diagnosis):
-    disease = diagnosis.get("disease_en", "")
-    pathogen_type = diagnosis.get("pathogen_type_en", "")
-
     return {
-        "recommendation_text": f"تم تحديد المرض الأقرب من الأطلس: {diagnosis.get('disease_ar')} - {disease}. ينصح بإزالة الأجزاء المصابة وتحسين التهوية وتقليل الرطوبة ومتابعة الحالة.",
+        "recommendation_text": f"تم تحديد المرض الأقرب من الأطلس: {diagnosis.get('disease_ar')} - {diagnosis.get('disease_en')}. ينصح بإزالة الأجزاء المصابة وتحسين التهوية وتقليل الرطوبة ومتابعة الحالة.",
         "bio_agents": ["Bacillus subtilis", "Bacillus velezensis", "Trichoderma harzianum"],
         "plant_extracts": ["مستخلص النيم", "مستخلص قشر الرمان", "مستخلص الثوم"],
         "field_actions": ["إزالة الأجزاء المصابة", "تعقيم أدوات القص", "تقليل الرطوبة", "تحسين التهوية"]
@@ -52,8 +50,11 @@ async def predict(file: UploadFile = File(...)):
 
         result, distance, confidence = diagnose_by_image_similarity(image_bytes)
 
+        if result is None:
+            return JSONResponse({"error": "لم يتم العثور على تطابق داخل الأطلس"}, status_code=400)
+
         image_hash = hashlib.sha256(image_bytes).hexdigest()
-        severity_score = 35 + (int(image_hash[:8], 16) % 56)
+        severity_score = int(35 + (int(image_hash[:8], 16) % 56))
 
         if severity_score < 50:
             severity_level_ar = "منخفضة"
@@ -79,7 +80,7 @@ async def predict(file: UploadFile = File(...)):
 
         return {
             "mode": "stable_atlas_similarity",
-            "confidence": confidence,
+            "confidence": int(confidence),
             "severity": {
                 "score": severity_score,
                 "level_ar": severity_level_ar,
@@ -89,14 +90,11 @@ async def predict(file: UploadFile = File(...)):
             "control_plan": safe_control_plan(diagnosis),
             "filename": file.filename,
             "image_hash": image_hash[:16],
-            "similarity_distance": distance
+            "similarity_distance": int(distance)
         }
 
     except Exception as e:
         return JSONResponse(
-            {
-                "error": "SERVER_ERROR",
-                "details": str(e)
-            },
+            {"error": "SERVER_ERROR", "details": str(e)},
             status_code=500
         )
